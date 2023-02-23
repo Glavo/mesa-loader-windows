@@ -17,13 +17,22 @@ buildscript {
 
 plugins {
     id("java")
+    id("maven-publish")
+    id("signing")
+    id("org.glavo.load-maven-publish-properties") version "0.1.0"
+    id("io.github.gradle-nexus.publish-plugin") version "1.1.0"
     id("de.undercouch.download") version "5.3.1"
 }
 
 group = "org.glavo"
-version = "0.1.0" + "-SNAPSHOT"
+version = "0.1.0"// + "-SNAPSHOT"
+description = "Mesa Loader for windows"
 
 val packageName = "org.glavo.mesa"
+
+java {
+    withSourcesJar()
+}
 
 tasks.compileJava {
     options.release.set(8)
@@ -47,6 +56,30 @@ tasks.jar {
             "Premain-Class" to "$packageName.Loader"
         )
     }
+}
+
+val `jar-x86` by tasks.creating(Jar::class) {
+    dependsOn(tasks.jar)
+
+    archiveClassifier.set("x86")
+
+    from(project.zipTree(tasks.jar.get().archiveFile.get())) {
+        exclude("**/x64/*")
+    }
+}
+
+val `jar-x64` by tasks.creating(Jar::class) {
+    dependsOn(tasks.jar)
+
+    archiveClassifier.set("x64")
+
+    from(project.zipTree(tasks.jar.get().archiveFile.get())) {
+        exclude("**/x86/*")
+    }
+}
+
+val jars by tasks.creating {
+    dependsOn(`jar-x86`, `jar-x64`)
 }
 
 val mesaVersion = "22.3.5"
@@ -107,7 +140,7 @@ val createVersionFile by tasks.creating {
 }
 
 tasks.processResources {
-    dependsOn(extractMesaDlls, createVersionFile)
+    dependsOn(createVersionFile)
 
     into(packageName.replace('.', '/')) {
         from(versionFile)
@@ -126,4 +159,64 @@ dependencies {
 
 tasks.getByName<Test>("test") {
     useJUnitPlatform()
+}
+
+tasks.withType<GenerateModuleMetadata>().configureEach {
+    enabled = false
+}
+
+configure<PublishingExtension> {
+    publications {
+        create<MavenPublication>("maven") {
+            groupId = project.group.toString()
+            version = project.version.toString()
+            artifactId = project.name
+            artifact(`jar-x86`)
+            artifact(`jar-x64`)
+
+            pom {
+                name.set(project.name)
+                description.set(project.description)
+                url.set("https://github.com/Glavo/mesa-loader-windows")
+
+                licenses {
+                    license {
+                        name.set("Apache-2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("glavo")
+                        name.set("Glavo")
+                        email.set("zjx001202@gmail.com")
+                    }
+                }
+
+                scm {
+                    url.set("https://github.com/Glavo/mesa-loader-windows")
+                }
+            }
+        }
+    }
+}
+
+signing {
+    useInMemoryPgpKeys(
+        rootProject.ext["signing.keyId"].toString(),
+        rootProject.ext["signing.key"].toString(),
+        rootProject.ext["signing.password"].toString(),
+    )
+    sign(publishing.publications["maven"])
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            stagingProfileId.set(rootProject.ext["sonatypeStagingProfileId"].toString())
+            username.set(rootProject.ext["sonatypeUsername"].toString())
+            password.set(rootProject.ext["sonatypePassword"].toString())
+        }
+    }
 }
