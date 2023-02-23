@@ -25,7 +25,7 @@ plugins {
 }
 
 group = "org.glavo"
-version = "0.1.0"// + "-SNAPSHOT"
+version = "0.2.0"// + "-SNAPSHOT"
 description = "Mesa Loader for windows"
 
 val packageName = "org.glavo.mesa"
@@ -63,6 +63,12 @@ val `jar-x86` by tasks.creating(Jar::class) {
 
     archiveClassifier.set("x86")
 
+    manifest {
+        attributes(
+            "Premain-Class" to "$packageName.Loader"
+        )
+    }
+
     from(project.zipTree(tasks.jar.get().archiveFile.get())) {
         exclude("**/x64/*")
     }
@@ -72,6 +78,12 @@ val `jar-x64` by tasks.creating(Jar::class) {
     dependsOn(tasks.jar)
 
     archiveClassifier.set("x64")
+
+    manifest {
+        attributes(
+            "Premain-Class" to "$packageName.Loader"
+        )
+    }
 
     from(project.zipTree(tasks.jar.get().archiveFile.get())) {
         exclude("**/x86/*")
