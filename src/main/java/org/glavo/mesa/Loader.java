@@ -59,10 +59,10 @@ public final class Loader {
             name = "llvmpipe";
 
         switch (name.toLowerCase(Locale.ENGLISH)) {
-            case "llvmpipe":
             case "zink":
                 files = new String[]{"libglapi.dll", "libgallium_wgl.dll", "opengl32.dll"};
                 break;
+            case "llvmpipe":
             case "d3d12":
                 files = new String[]{"libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll"};
                 break;
