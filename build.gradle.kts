@@ -58,89 +58,92 @@ tasks.jar {
     }
 }
 
-val `jar-x64` by tasks.creating(Jar::class) {
-    dependsOn(tasks.jar)
-
-    archiveClassifier.set("x64")
-
-    manifest {
-        attributes(
-            "Premain-Class" to "$packageName.Loader"
-        )
-    }
-
-    from(project.zipTree(tasks.jar.get().archiveFile.get())) {
-        exclude("**/x86/*")
-    }
-}
-
-val jars by tasks.creating {
-    dependsOn(`jar-x64`)
-}
-
 val mesaVersion = "22.3.5"
-val mesaCompiler = "mingw"
+val mesaCompilers = listOf("msvc", "mingw")
 
-val mesaDir = buildDir.resolve("mesa-$mesaVersion-$mesaCompiler")
-val mesaDistFile = buildDir.resolve("mesa3d-$mesaVersion-release-$mesaCompiler.7z")
-
-val mesaArches = listOf("x64")
+val mesaArches = listOf("x86", "x64")
 val mesaFiles = listOf("libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll")
 
-val downloadMesa by tasks.creating(Download::class) {
-    src("https://github.com/pal1000/mesa-dist-win/releases/download/$mesaVersion/${mesaDistFile.name}")
-    dest(mesaDistFile)
-    overwrite(false)
-}
+val jars by tasks.creating { }
+val extractMesaDlls by tasks.creating { }
 
-val extractMesaDlls by tasks.creating {
-    dependsOn(downloadMesa)
+for (mesaCompiler in mesaCompilers) {
+    val mesaDistFile = buildDir.resolve("mesa3d-$mesaVersion-release-$mesaCompiler.7z")
+    val mesaDir = buildDir.resolve("mesa-$mesaVersion-$mesaCompiler")
 
-    inputs.file(mesaDistFile)
-    outputs.files(mesaArches.flatMap { arch ->  mesaFiles.map { fileName -> mesaDir.resolve("$arch/$fileName") } })
+    val downloadMesa = tasks.create<Download>("downloadMesa-$mesaCompiler") {
+        src("https://github.com/pal1000/mesa-dist-win/releases/download/$mesaVersion/${mesaDistFile.name}")
+        dest(mesaDistFile)
+        overwrite(false)
+    }
 
-    doLast {
-        SevenZip.initSevenZipFromPlatformJAR()
-        SevenZip.openInArchive(null, RandomAccessFileInStream(RandomAccessFile(mesaDistFile, "r"))).use { archive ->
-            val items = archive.simpleInterface.archiveItems.groupBy { it.path.replace('\\', '/') }.mapValues { it.value.first() }
+    tasks.create("extractMesaDlls-$mesaCompiler") {
+        dependsOn(downloadMesa)
+        extractMesaDlls.dependsOn(this)
 
-            for (arch in mesaArches) {
-                for (fileName in mesaFiles) {
-                    val path = "$arch/$fileName"
-                    val item = items.getOrElse(path) { throw Exception("$path not found") }
+        inputs.file(mesaDistFile)
+        outputs.files(mesaArches.flatMap { arch -> mesaFiles.map { fileName -> mesaDir.resolve("$arch/$fileName") } })
 
-                    val targetFile = mesaDir.resolve(path)
-                    targetFile.parentFile.mkdirs()
+        doLast {
+            SevenZip.initSevenZipFromPlatformJAR()
+            SevenZip.openInArchive(null, RandomAccessFileInStream(RandomAccessFile(mesaDistFile, "r"))).use { archive ->
+                val items = archive.simpleInterface.archiveItems.groupBy { it.path.replace('\\', '/') }
+                    .mapValues { it.value.first() }
 
-                    targetFile.outputStream().use { output ->
-                        item.extractSlow {
-                            output.write(it)
-                            it.size
+                for (arch in mesaArches) {
+                    for (fileName in mesaFiles) {
+                        val path = "$arch/$fileName"
+                        val item = items.getOrElse(path) { throw Exception("$path not found") }
+
+                        val targetFile = mesaDir.resolve(path)
+                        targetFile.parentFile.mkdirs()
+
+                        targetFile.outputStream().use { output ->
+                            item.extractSlow {
+                                output.write(it)
+                                it.size
+                            }
                         }
                     }
                 }
             }
         }
     }
-}
 
-val versionFile = buildDir.resolve("version.properties")
-val createVersionFile by tasks.creating {
-    doLast {
-        val p = Properties()
-        p["loader.version"] = project.version.toString()
-        p["mesa.version"] = "$mesaVersion-$mesaCompiler"
-        versionFile.writer().use { p.store(it, null) }
+    val versionFile = mesaDir.resolve("version.properties")
+    val createVersionFile = tasks.create("createVersionFile-$mesaCompiler") {
+        doLast {
+            versionFile.parentFile.mkdirs()
 
+            val p = Properties()
+            p["loader.version"] = project.version.toString()
+            p["mesa.version"] = "$mesaVersion-$mesaCompiler"
+            versionFile.writer().use { p.store(it, null) }
+        }
     }
-}
 
-tasks.processResources {
-    dependsOn(createVersionFile)
+    for (arch in mesaArches) {
+        tasks.create<Jar>("jar-$mesaCompiler-$arch") {
+            dependsOn(tasks.jar, createVersionFile)
+            jars.dependsOn(this)
 
-    into(packageName.replace('.', '/')) {
-        from(versionFile)
-        from(mesaDir)
+            archiveClassifier.set("$mesaCompiler-$arch")
+
+            manifest {
+                attributes(
+                    "Premain-Class" to "$packageName.Loader"
+                )
+            }
+
+            from(sourceSets["main"].java)
+            into(packageName.replace('.', '/')) {
+                from(versionFile)
+            }
+
+            into("$packageName.$arch".replace('.', '/')) {
+                from(mesaDir.resolve(arch))
+            }
+        }
     }
 }
 
@@ -167,7 +170,12 @@ configure<PublishingExtension> {
             groupId = project.group.toString()
             version = project.version.toString()
             artifactId = project.name
-            artifact(`jar-x64`)
+
+            for (mesaCompiler in mesaCompilers) {
+                for (arch in mesaArches) {
+                    artifact(tasks["jar-$mesaCompiler-$arch"])
+                }
+            }
 
             pom {
                 name.set(project.name)
