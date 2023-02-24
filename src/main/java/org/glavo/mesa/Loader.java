@@ -73,7 +73,8 @@ public final class Loader {
 
         File targetDir = new File(String.format("%s/glavo-mesa-loader-%s-%s",
                 System.getProperty("java.io.tmpdir"),
-                arch, loaderVersion == null ? System.nanoTime() : loaderVersion)).getAbsoluteFile();
+                mesaVersion == null ? System.nanoTime() : mesaVersion,
+                arch)).getAbsoluteFile();
         targetDir.mkdirs();
         if (temp) {
             targetDir.deleteOnExit();

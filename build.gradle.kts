@@ -135,7 +135,7 @@ for (mesaCompiler in mesaCompilers) {
                 )
             }
 
-            from(sourceSets["main"].java)
+            from(sourceSets["main"].runtimeClasspath)
             into(packageName.replace('.', '/')) {
                 from(versionFile)
             }
