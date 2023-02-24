@@ -22,19 +22,6 @@ public final class Loader {
             case "x64":
                 arch = "x64";
                 break;
-            case "x8632":
-            case "x86-32":
-            case "x86_32":
-            case "x86":
-            case "i86pc":
-            case "i386":
-            case "i486":
-            case "i586":
-            case "i686":
-            case "ia32":
-            case "x32":
-                arch = "x86";
-                break;
             default:
                 System.err.println("[mesa-loader] unsupported architecture: " + System.getProperty("os.arch"));
                 return;

@@ -25,7 +25,7 @@ plugins {
 }
 
 group = "org.glavo"
-version = "0.2.0"// + "-SNAPSHOT"
+version = "0.3.0" + "-SNAPSHOT"
 description = "Mesa Loader for windows"
 
 val packageName = "org.glavo.mesa"
@@ -58,22 +58,6 @@ tasks.jar {
     }
 }
 
-val `jar-x86` by tasks.creating(Jar::class) {
-    dependsOn(tasks.jar)
-
-    archiveClassifier.set("x86")
-
-    manifest {
-        attributes(
-            "Premain-Class" to "$packageName.Loader"
-        )
-    }
-
-    from(project.zipTree(tasks.jar.get().archiveFile.get())) {
-        exclude("**/x64/*")
-    }
-}
-
 val `jar-x64` by tasks.creating(Jar::class) {
     dependsOn(tasks.jar)
 
@@ -91,7 +75,7 @@ val `jar-x64` by tasks.creating(Jar::class) {
 }
 
 val jars by tasks.creating {
-    dependsOn(`jar-x86`, `jar-x64`)
+    dependsOn(`jar-x64`)
 }
 
 val mesaVersion = "22.3.5"
@@ -100,7 +84,7 @@ val mesaCompiler = "msvc"
 val mesaDir = buildDir.resolve("mesa-$mesaVersion-$mesaCompiler")
 val mesaDistFile = buildDir.resolve("mesa3d-$mesaVersion-release-$mesaCompiler.7z")
 
-val mesaArches = listOf("x86", "x64")
+val mesaArches = listOf("x64")
 val mesaFiles = listOf("libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll")
 
 val downloadMesa by tasks.creating(Download::class) {
@@ -183,7 +167,6 @@ configure<PublishingExtension> {
             groupId = project.group.toString()
             version = project.version.toString()
             artifactId = project.name
-            artifact(`jar-x86`)
             artifact(`jar-x64`)
 
             pom {
