@@ -79,7 +79,7 @@ val jars by tasks.creating {
 }
 
 val mesaVersion = "22.3.5"
-val mesaCompiler = "msvc"
+val mesaCompiler = "mingw"
 
 val mesaDir = buildDir.resolve("mesa-$mesaVersion-$mesaCompiler")
 val mesaDistFile = buildDir.resolve("mesa3d-$mesaVersion-release-$mesaCompiler.7z")
