@@ -64,12 +64,14 @@ val mesaCompilers = listOf("msvc", "mingw")
 val mesaArches = listOf("x86", "x64")
 val mesaFiles = listOf("libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll")
 
+val downloadDir = layout.buildDirectory.dir("download").get()
+
 val jars by tasks.creating { }
 val extractMesaDlls by tasks.creating { }
 
 for (mesaCompiler in mesaCompilers) {
-    val mesaDistFile = buildDir.resolve("mesa3d-$mesaVersion-release-$mesaCompiler.7z")
-    val mesaDir = buildDir.resolve("mesa-$mesaVersion-$mesaCompiler")
+    val mesaDistFile = downloadDir.file("mesa3d-$mesaVersion-release-$mesaCompiler.7z").asFile
+    val mesaDir = downloadDir.file("mesa-$mesaVersion-$mesaCompiler").asFile
 
     val downloadMesa = tasks.create<Download>("downloadMesa-$mesaCompiler") {
         src("https://github.com/pal1000/mesa-dist-win/releases/download/$mesaVersion/${mesaDistFile.name}")
