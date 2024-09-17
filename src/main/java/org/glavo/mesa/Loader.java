@@ -85,7 +85,7 @@ public final class Loader {
                 files = new String[]{"libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll"};
                 break;
             default:
-                System.err.println("[mesa-loader] unknown name: " + name);
+                System.err.println("[mesa-loader] Unknown name: " + name);
                 return;
         }
 
@@ -99,13 +99,13 @@ public final class Loader {
         File lockFile = new File(targetDir, "lock");
         FileLock lock = null;
         try (FileOutputStream lockFileStream = new FileOutputStream(lockFile)) {
-            for (int retry = 0; retry < 5; retry++) {
+            for (int retry = 0; retry < 20; retry++) {
                 lock = lockFileStream.getChannel().tryLock();
                 if (lock != null) {
                     break;
                 }
                 try {
-                    Thread.sleep(5 * 1000);
+                    Thread.sleep(3 * 1000);
                 } catch (InterruptedException e) {
                     System.out.println("[mesa-loader] Interrupted while waiting for lock");
                     return;
