@@ -16,6 +16,7 @@
 package org.glavo.mesa;
 
 import java.io.*;
+import java.nio.channels.FileLock;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -27,7 +28,7 @@ public final class Loader {
         }
 
         String arch;
-        switch (System.getProperty("os.arch").toLowerCase(Locale.ENGLISH)) {
+        switch (System.getProperty("os.arch").toLowerCase(Locale.ROOT)) {
             case "x8664":
             case "x86-64":
             case "x86_64":
@@ -51,7 +52,7 @@ public final class Loader {
                 arch = "x86";
                 break;
             default:
-                System.err.println("[mesa-loader] unsupported architecture: " + System.getProperty("os.arch"));
+                System.err.println("[mesa-loader] Unsupported architecture: " + System.getProperty("os.arch"));
                 return;
         }
 
@@ -62,11 +63,13 @@ public final class Loader {
         }
 
         String mesaVersion = properties.getProperty("mesa.version");
-        if (mesaVersion != null)
-            System.out.println("[mesa-loader] Mesa Version: " + mesaVersion);
+        if (mesaVersion == null) {
+            System.err.println("[mesa-loader] Missing mesa version property in version.properties");
+            return;
+        }
 
-        String loaderVersion = properties.getProperty("loader.version");
-        boolean temp = loaderVersion == null || loaderVersion.endsWith("SNAPSHOT");
+        System.out.println("[mesa-loader] Mesa Version: " + mesaVersion);
+        System.out.println("[mesa-loader] Loader Version: " + properties.getProperty("loader.version"));
 
         String[] files;
 
@@ -88,46 +91,74 @@ public final class Loader {
 
         File targetDir = new File(String.format("%s/glavo-mesa-loader-%s-%s",
                 System.getProperty("java.io.tmpdir"),
-                mesaVersion == null ? System.nanoTime() : mesaVersion,
+                mesaVersion,
                 arch)).getAbsoluteFile();
+        //noinspection ResultOfMethodCallIgnored
         targetDir.mkdirs();
-        if (temp) {
-            targetDir.deleteOnExit();
-        }
 
-        byte[] buffer = new byte[8192];
-        for (String file : files) {
-            try (InputStream input = Loader.class.getResourceAsStream(arch + "/" + file)) {
-                if (input == null) {
-                    System.err.println("[mesa-loader] " + file + " not exists");
+        File lockFile = new File(targetDir, "lock");
+        FileLock lock = null;
+        try (FileOutputStream lockFileStream = new FileOutputStream(lockFile)) {
+            for (int retry = 0; retry < 5; retry++) {
+                lock = lockFileStream.getChannel().tryLock();
+                if (lock != null) {
+                    break;
+                }
+                try {
+                    Thread.sleep(5 * 1000);
+                } catch (InterruptedException e) {
+                    System.out.println("[mesa-loader] Interrupted while waiting for lock");
                     return;
                 }
+            }
 
-                File targetFile = new File(targetDir, file);
+            if (lock == null) {
+                System.err.println("[mesa-loader] Could not get file lock");
+                return;
+            }
 
-                if (!targetFile.exists() || targetFile.length() != input.available()) {
-                    System.out.println("[mesa-loader] Extract " + file + " to " + targetDir);
-                    if (temp) {
-                        targetFile.deleteOnExit();
+            byte[] buffer = new byte[8192];
+            for (String file : files) {
+                try (InputStream input = Loader.class.getResourceAsStream(arch + "/" + file)) {
+                    if (input == null) {
+                        System.err.println("[mesa-loader] " + file + " not exists");
+                        return;
                     }
 
-                    try (FileOutputStream out = new FileOutputStream(targetFile)) {
-                        int n;
-                        while ((n = input.read(buffer)) > 0) {
-                            out.write(buffer, 0, n);
+                    File targetFile = new File(targetDir, file);
+
+                    if (!targetFile.exists() || targetFile.length() != input.available()) {
+                        System.out.println("[mesa-loader] Extract " + file + " to " + targetDir);
+                        try (FileOutputStream out = new FileOutputStream(targetFile)) {
+                            int n;
+                            while ((n = input.read(buffer)) > 0) {
+                                out.write(buffer, 0, n);
+                            }
                         }
                     }
-                }
 
-                String dllPath = targetFile.getAbsolutePath();
-                System.out.println("[mesa-loader] Loading " + dllPath);
-                System.load(dllPath);
-            } catch (IOException e) {
-                System.err.println("[mesa-loader] Failed to extract " + file);
-                e.printStackTrace();
-            } catch (UnsatisfiedLinkError e) {
-                System.err.println("[mesa-loader] Failed to load " + file);
-                e.printStackTrace();
+                    String dllPath = targetFile.getAbsolutePath();
+                    System.out.println("[mesa-loader] Loading " + dllPath);
+                    System.load(dllPath);
+                } catch (IOException e) {
+                    System.err.println("[mesa-loader] Failed to extract " + file);
+                    e.printStackTrace(System.err);
+                } catch (UnsatisfiedLinkError e) {
+                    System.err.println("[mesa-loader] Failed to load " + file);
+                    e.printStackTrace(System.err);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("[mesa-loader] Failed to get file lock");
+            e.printStackTrace(System.err);
+        } finally {
+            if (lock != null) {
+                try {
+                    lock.release();
+                } catch (Throwable e) {
+                    System.err.println("[mesa-loader] An exception occurred while releasing the file lock");
+                    e.printStackTrace(System.err);
+                }
             }
         }
     }
