@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "org.glavo"
-version = "0.3.0" + "-SNAPSHOT"
+version = "0.3.0"// + "-SNAPSHOT"
 description = "Mesa Loader for windows"
 
 val packageName = "org.glavo.mesa"
