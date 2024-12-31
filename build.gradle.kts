@@ -69,6 +69,48 @@ val downloadDir = layout.buildDirectory.dir("download").get()
 val jars by tasks.creating { }
 val extractMesaDlls by tasks.creating { }
 
+val `7zz` = run {
+    val property = rootProject.findProperty("7zz")
+    if (property != null) {
+        val file = file(property)
+        if (!file.exists()) {
+            throw GradleException("$property not found")
+        }
+        return@run file.absoluteFile
+    }
+
+    if (org.gradle.nativeplatform.platform.internal.DefaultNativePlatform.getCurrentOperatingSystem().isWindows) {
+        val programFile = System.getenv("ProgramFiles") ?: "C:\\Program Files"
+
+        var file = file(programFile).resolve("7-Zip").resolve("7z.exe")
+        if (file.exists()) {
+            return@run file.absoluteFile
+        }
+
+        file = file(programFile).resolve("7-Zip-Zstandard").resolve("7z.exe")
+        if (file.exists()) {
+            return@run file.absoluteFile
+        }
+
+        return@run null
+    } else {
+        fun findBin(name: String): File? {
+            for (path in System.getenv("PATH").split(':')) {
+                val file = file(path).resolve(name)
+                if (file.exists()) {
+                    return file.absoluteFile
+                }
+            }
+
+            return null
+        }
+
+        return@run findBin("7zz") ?: findBin("7z")
+    }
+}
+
+logger.quiet("7-Zip Binary: $`7zz`")
+
 for (mesaCompiler in mesaCompilers) {
     val mesaDistFile = downloadDir.file("mesa3d-$mesaVersion-release-$mesaCompiler.7z").asFile
     val mesaDir = downloadDir.file("mesa-$mesaVersion-$mesaCompiler").asFile
