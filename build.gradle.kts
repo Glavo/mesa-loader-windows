@@ -17,6 +17,13 @@ val packageName = "org.glavo.mesa"
 
 java {
     withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.javadoc {
+    (options as CoreJavadocOptions).apply {
+        addBooleanOption("Xdoclint:none", true)
+    }
 }
 
 tasks.compileJava {
@@ -74,34 +81,43 @@ val createVersionFile = tasks.register("createVersionFile") {
     }
 }
 
-for (arch in mesaArches) {
-    tasks.register<Jar>("jar-$arch") {
-        dependsOn(downloadMesa, createVersionFile)
-        tasks.build.get().dependsOn(this)
+fun Jar.addMesaDlls(arch: String) {
+    for (driver in mesaDrivers) {
+        into("$packageName.$arch.$driver".replace('.', '/')) {
+            from(zipTree(mesaDir.resolve("mesa-$driver-$arch-$mesaVersion.zip")))
+        }
+    }
+}
 
+tasks.jar {
+    for (arch in mesaArches) {
+        addMesaDlls(arch)
+    }
+}
+
+val jarTasks = listOf(tasks.jar) + mesaArches.map { arch ->
+    tasks.register<Jar>("jar-$arch") {
+        tasks.build.get().dependsOn(this)
         archiveClassifier.set(arch)
 
+        from(sourceSets["main"].runtimeClasspath)
+
+        addMesaDlls(arch)
+    }
+}
+
+for (jarTask in jarTasks) {
+    jarTask {
+        dependsOn(downloadMesa, createVersionFile)
         manifest {
             attributes(
                 "Premain-Class" to "$packageName.Loader"
             )
         }
-
-        from(sourceSets["main"].runtimeClasspath)
         into(packageName.replace('.', '/')) {
             from(versionFile)
         }
-
-        for (driver in mesaDrivers) {
-            into("$packageName.$arch.$driver".replace('.', '/')) {
-                from(zipTree(mesaDir.resolve("mesa-$driver-$arch-$mesaVersion.zip")))
-            }
-        }
     }
-}
-
-repositories {
-    mavenCentral()
 }
 
 tasks.getByName<Test>("test") {
