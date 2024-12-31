@@ -58,7 +58,7 @@ tasks.jar {
     }
 }
 
-val mesaVersion = "22.3.5"
+val mesaVersion = "24.3.2"
 val mesaCompilers = listOf("msvc", "mingw")
 
 val mesaArches = listOf("x86", "x64")
