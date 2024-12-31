@@ -97,8 +97,6 @@ public final class Loader {
                 String.format("mesa-loader/%s/%s/%s", loaderVersion, arch, name)).getAbsoluteFile();
         targetDir.mkdirs();
 
-        System.out.println("[mesa-loader] Temporary Directory: " + targetDir);
-
         File lockFile = new File(targetDir, "lock");
 
         try (FileOutputStream lockFileStream = new FileOutputStream(lockFile)) {
