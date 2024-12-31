@@ -90,6 +90,7 @@ public final class Loader {
             System.exit(1);
         }
 
+        System.out.println("[mesa-loader] Mesa Driver: " + name);
         System.out.println("[mesa-loader] Mesa Version: " + mesaVersion);
         System.out.println("[mesa-loader] Loader Version: " + loaderVersion);
 
