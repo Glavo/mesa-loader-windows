@@ -17,6 +17,8 @@ package org.glavo.mesa;
 
 import java.io.*;
 import java.nio.channels.FileLock;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
 
@@ -24,7 +26,7 @@ public final class Loader {
     public static void premain(String name) {
         if (!System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")) {
             System.err.println("[mesa-loader] unsupported operating system: " + System.getProperty("os.name"));
-            return;
+            System.exit(1);
         }
 
         String arch;
@@ -51,10 +53,29 @@ public final class Loader {
             case "x32":
                 arch = "x86";
                 break;
+            case "aarch64":
+            case "arm64":
+            case "armv9":
+            case "armv8":
+                arch = "arm64";
+                break;
             default:
                 System.err.println("[mesa-loader] Unsupported architecture: " + System.getProperty("os.arch"));
+                System.exit(1);
                 return;
         }
+
+        List<String> files = new ArrayList<>(2);
+        if (name == null || name.isEmpty()) {
+            name = "llvmpipe";
+        } else {
+            name = name.toLowerCase(Locale.ROOT);
+        }
+
+        if ("d3d12".equals(name)) {
+            files.add("dxil.dll");
+        }
+        files.add("opengl32.dll");
 
         Properties properties = new Properties();
         try (Reader reader = new InputStreamReader(Loader.class.getResourceAsStream("version.properties"), "UTF-8")) {
@@ -63,66 +84,52 @@ public final class Loader {
         }
 
         String mesaVersion = properties.getProperty("mesa.version");
-        if (mesaVersion == null) {
-            System.err.println("[mesa-loader] Missing mesa version property in version.properties");
-            return;
+        String loaderVersion = properties.getProperty("loader.version");
+        if (loaderVersion == null) {
+            System.err.println("[mesa-loader] Missing loader version property in version.properties");
+            System.exit(1);
         }
 
         System.out.println("[mesa-loader] Mesa Version: " + mesaVersion);
-        System.out.println("[mesa-loader] Loader Version: " + properties.getProperty("loader.version"));
+        System.out.println("[mesa-loader] Loader Version: " + loaderVersion);
 
-        String[] files;
-
-        if (name == null || name.isEmpty())
-            name = "llvmpipe";
-
-        switch (name.toLowerCase(Locale.ROOT)) {
-            case "zink":
-                files = new String[]{"libglapi.dll", "libgallium_wgl.dll", "opengl32.dll"};
-                break;
-            case "llvmpipe":
-            case "d3d12":
-                files = new String[]{"libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll"};
-                break;
-            default:
-                System.err.println("[mesa-loader] Unknown name: " + name);
-                return;
-        }
-
-        File targetDir = new File(String.format("%s/glavo-mesa-loader-%s-%s",
-                System.getProperty("java.io.tmpdir"),
-                mesaVersion,
-                arch)).getAbsoluteFile();
-        //noinspection ResultOfMethodCallIgnored
+        File targetDir = new File(System.getProperty("java.io.tmpdir"),
+                String.format("mesa-loader/%s/%s/%s", loaderVersion, arch, name)).getAbsoluteFile();
         targetDir.mkdirs();
 
+        System.out.println("[mesa-loader] Temporary Directory: " + targetDir);
+
         File lockFile = new File(targetDir, "lock");
-        FileLock lock = null;
+
         try (FileOutputStream lockFileStream = new FileOutputStream(lockFile)) {
-            for (int retry = 0; retry < 20; retry++) {
-                lock = lockFileStream.getChannel().tryLock();
-                if (lock != null) {
-                    break;
-                }
-                try {
-                    Thread.sleep(3 * 1000);
-                } catch (InterruptedException e) {
-                    System.out.println("[mesa-loader] Interrupted while waiting for lock");
-                    return;
+            FileLock lock = lockFileStream.getChannel().tryLock();
+
+            if (lock == null) {
+                for (int retry = 0; retry < 20 && lock == null; retry++) {
+                    System.out.println("[mesa-loader] Waiting for the file lock");
+
+                    try {
+                        Thread.sleep(3 * 1000);
+                    } catch (InterruptedException e) {
+                        System.out.println("[mesa-loader] Interrupted while waiting for lock");
+                        return;
+                    }
+
+                    lock = lockFileStream.getChannel().tryLock();
                 }
             }
 
             if (lock == null) {
                 System.err.println("[mesa-loader] Could not get file lock");
-                return;
+                System.exit(1);
             }
 
             byte[] buffer = new byte[8192];
             for (String file : files) {
-                try (InputStream input = Loader.class.getResourceAsStream(arch + "/" + file)) {
+                try (InputStream input = Loader.class.getResourceAsStream(arch + "/" + name + "/" + file)) {
                     if (input == null) {
                         System.err.println("[mesa-loader] " + file + " not exists");
-                        return;
+                        System.exit(1);
                     }
 
                     File targetFile = new File(targetDir, file);
@@ -151,15 +158,6 @@ public final class Loader {
         } catch (IOException e) {
             System.err.println("[mesa-loader] Failed to get file lock");
             e.printStackTrace(System.err);
-        } finally {
-            if (lock != null) {
-                try {
-                    lock.release();
-                } catch (Throwable e) {
-                    System.err.println("[mesa-loader] An exception occurred while releasing the file lock");
-                    e.printStackTrace(System.err);
-                }
-            }
         }
     }
 }

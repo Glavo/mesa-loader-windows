@@ -1,19 +1,4 @@
-import de.undercouch.gradle.tasks.download.Download
-import net.sf.sevenzipjbinding.SevenZip
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.io.RandomAccessFile
-import java.util.*
-
-buildscript {
-    repositories { mavenCentral() }
-    dependencies {
-        classpath("org.apache.commons:commons-compress:1.22")
-        classpath("org.tukaani:xz:1.9")
-
-        classpath("net.sf.sevenzipjbinding:sevenzipjbinding:16.02-2.01")
-        classpath("net.sf.sevenzipjbinding:sevenzipjbinding-all-platforms:16.02-2.01")
-    }
-}
 
 plugins {
     id("java")
@@ -21,7 +6,7 @@ plugins {
     id("signing")
     id("org.glavo.load-maven-publish-properties") version "0.1.0"
     id("io.github.gradle-nexus.publish-plugin") version "1.1.0"
-    id("de.undercouch.download") version "5.3.1"
+    id("de.undercouch.download") version "5.6.0"
 }
 
 group = "org.glavo"
@@ -59,133 +44,57 @@ tasks.jar {
 }
 
 val mesaVersion = "24.3.2"
-val mesaCompilers = listOf("msvc", "mingw")
+val mesaArches = listOf("x86", "x64", "arm64")
+val mesaDrivers = listOf("llvmpipe", "d3d12", "zink")
 
-val mesaArches = listOf("x86", "x64")
 val mesaFiles = listOf("libglapi.dll", "libgallium_wgl.dll", "opengl32.dll", "dxil.dll")
+val mesaDir = layout.buildDirectory.dir("download").get().dir("mesa-$mesaVersion").asFile
 
-val downloadDir = layout.buildDirectory.dir("download").get()
+val downloadMesa = tasks.register<de.undercouch.gradle.tasks.download.Download>("downloadMesa") {
+    val urlBase = "https://github.com/mmozeiko/build-mesa/releases/download/$mesaVersion"
 
-val jars by tasks.creating { }
-val extractMesaDlls by tasks.creating { }
-
-val `7zz` = run {
-    val property = rootProject.findProperty("7zz")
-    if (property != null) {
-        val file = file(property)
-        if (!file.exists()) {
-            throw GradleException("$property not found")
+    for (arch in mesaArches) {
+        for (driver in mesaDrivers) {
+            src("$urlBase/mesa-$driver-$arch-$mesaVersion.zip")
         }
-        return@run file.absoluteFile
     }
 
-    if (org.gradle.nativeplatform.platform.internal.DefaultNativePlatform.getCurrentOperatingSystem().isWindows) {
-        val programFile = System.getenv("ProgramFiles") ?: "C:\\Program Files"
+    dest(mesaDir)
+    overwrite(false)
+}
 
-        var file = file(programFile).resolve("7-Zip").resolve("7z.exe")
-        if (file.exists()) {
-            return@run file.absoluteFile
+val versionFile = mesaDir.resolve("version.properties")
+val createVersionFile = tasks.register("createVersionFile") {
+    doLast {
+        versionFile.parentFile.mkdirs()
+        versionFile.printWriter().use { writer ->
+            writer.println("loader.version=${project.version}")
+            writer.println("mesa.version=$mesaVersion")
         }
-
-        file = file(programFile).resolve("7-Zip-Zstandard").resolve("7z.exe")
-        if (file.exists()) {
-            return@run file.absoluteFile
-        }
-
-        return@run null
-    } else {
-        fun findBin(name: String): File? {
-            for (path in System.getenv("PATH").split(':')) {
-                val file = file(path).resolve(name)
-                if (file.exists()) {
-                    return file.absoluteFile
-                }
-            }
-
-            return null
-        }
-
-        return@run findBin("7zz") ?: findBin("7z")
     }
 }
 
-logger.quiet("7-Zip Binary: $`7zz`")
+for (arch in mesaArches) {
+    tasks.register<Jar>("jar-$arch") {
+        dependsOn(downloadMesa, createVersionFile)
+        tasks.build.get().dependsOn(this)
 
-for (mesaCompiler in mesaCompilers) {
-    val mesaDistFile = downloadDir.file("mesa3d-$mesaVersion-release-$mesaCompiler.7z").asFile
-    val mesaDir = downloadDir.file("mesa-$mesaVersion-$mesaCompiler").asFile
+        archiveClassifier.set(arch)
 
-    val downloadMesa = tasks.create<Download>("downloadMesa-$mesaCompiler") {
-        src("https://github.com/pal1000/mesa-dist-win/releases/download/$mesaVersion/${mesaDistFile.name}")
-        dest(mesaDistFile)
-        overwrite(false)
-    }
-
-    tasks.create("extractMesaDlls-$mesaCompiler") {
-        dependsOn(downloadMesa)
-        extractMesaDlls.dependsOn(this)
-
-        inputs.file(mesaDistFile)
-        outputs.files(mesaArches.flatMap { arch -> mesaFiles.map { fileName -> mesaDir.resolve("$arch/$fileName") } })
-
-        doLast {
-            SevenZip.initSevenZipFromPlatformJAR()
-            SevenZip.openInArchive(null, RandomAccessFileInStream(RandomAccessFile(mesaDistFile, "r"))).use { archive ->
-                val items = archive.simpleInterface.archiveItems.groupBy { it.path.replace('\\', '/') }
-                    .mapValues { it.value.first() }
-
-                for (arch in mesaArches) {
-                    for (fileName in mesaFiles) {
-                        val path = "$arch/$fileName"
-                        val item = items.getOrElse(path) { throw Exception("$path not found") }
-
-                        val targetFile = mesaDir.resolve(path)
-                        targetFile.parentFile.mkdirs()
-
-                        targetFile.outputStream().use { output ->
-                            item.extractSlow {
-                                output.write(it)
-                                it.size
-                            }
-                        }
-                    }
-                }
-            }
+        manifest {
+            attributes(
+                "Premain-Class" to "$packageName.Loader"
+            )
         }
-    }
 
-    val versionFile = mesaDir.resolve("version.properties")
-    val createVersionFile = tasks.create("createVersionFile-$mesaCompiler") {
-        doLast {
-            versionFile.parentFile.mkdirs()
-
-            val p = Properties()
-            p["loader.version"] = project.version.toString()
-            p["mesa.version"] = "$mesaVersion-$mesaCompiler"
-            versionFile.writer().use { p.store(it, null) }
+        from(sourceSets["main"].runtimeClasspath)
+        into(packageName.replace('.', '/')) {
+            from(versionFile)
         }
-    }
 
-    for (arch in mesaArches) {
-        tasks.create<Jar>("jar-$mesaCompiler-$arch") {
-            dependsOn(tasks.jar, createVersionFile)
-            jars.dependsOn(this)
-
-            archiveClassifier.set("$mesaCompiler-$arch")
-
-            manifest {
-                attributes(
-                    "Premain-Class" to "$packageName.Loader"
-                )
-            }
-
-            from(sourceSets["main"].runtimeClasspath)
-            into(packageName.replace('.', '/')) {
-                from(versionFile)
-            }
-
-            into("$packageName.$arch".replace('.', '/')) {
-                from(mesaDir.resolve(arch))
+        for (driver in mesaDrivers) {
+            into("$packageName.$arch.$driver".replace('.', '/')) {
+                from(zipTree(mesaDir.resolve("mesa-$driver-$arch-$mesaVersion.zip")))
             }
         }
     }
@@ -193,11 +102,6 @@ for (mesaCompiler in mesaCompilers) {
 
 repositories {
     mavenCentral()
-}
-
-dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.8.1")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.8.1")
 }
 
 tasks.getByName<Test>("test") {
@@ -215,10 +119,8 @@ configure<PublishingExtension> {
             version = project.version.toString()
             artifactId = project.name
 
-            for (mesaCompiler in mesaCompilers) {
-                for (arch in mesaArches) {
-                    artifact(tasks["jar-$mesaCompiler-$arch"])
-                }
+            for (arch in mesaArches) {
+                artifact(tasks["jar-$arch"])
             }
 
             pom {
