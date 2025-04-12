@@ -9,8 +9,10 @@ plugins {
     id("de.undercouch.download") version "5.6.0"
 }
 
+val mesaVersion = "25.0.3"
+
 group = "org.glavo"
-version = "1.0.0" + "-SNAPSHOT"
+version = mesaVersion //+ "-SNAPSHOT"
 description = "Mesa Loader for windows"
 
 val packageName = "org.glavo.mesa"
@@ -50,7 +52,6 @@ tasks.jar {
     }
 }
 
-val mesaVersion = "24.3.2"
 val mesaArches = listOf("x86", "x64", "arm64")
 val mesaDrivers = listOf("llvmpipe", "d3d12", "zink")
 
