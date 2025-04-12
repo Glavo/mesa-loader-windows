@@ -12,7 +12,7 @@ plugins {
 val mesaVersion = "25.0.3"
 
 group = "org.glavo"
-version = mesaVersion //+ "-SNAPSHOT"
+version = mesaVersion + "-SNAPSHOT"
 description = "Mesa Loader for windows"
 
 val packageName = "org.glavo.mesa"
@@ -77,7 +77,6 @@ val createVersionFile = tasks.register("createVersionFile") {
         versionFile.parentFile.mkdirs()
         versionFile.printWriter().use { writer ->
             writer.println("loader.version=${project.version}")
-            writer.println("mesa.version=$mesaVersion")
         }
     }
 }

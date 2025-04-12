@@ -89,7 +89,6 @@ public final class Loader {
         } catch (Throwable ignored) {
         }
 
-        String mesaVersion = properties.getProperty("mesa.version");
         String loaderVersion = properties.getProperty("loader.version");
         if (loaderVersion == null) {
             System.err.println("[mesa-loader] Missing loader version property in version.properties");
@@ -97,8 +96,7 @@ public final class Loader {
         }
 
         System.out.println("[mesa-loader] Mesa Driver: " + name);
-        System.out.println("[mesa-loader] Mesa Version: " + mesaVersion);
-        System.out.println("[mesa-loader] Loader Version: " + loaderVersion);
+        System.out.println("[mesa-loader] Mesa Version: " + loaderVersion);
 
         File targetDir = new File(System.getProperty("java.io.tmpdir"),
                 String.format("mesa-loader/%s/%s/%s", loaderVersion, arch, name)).getAbsoluteFile();
